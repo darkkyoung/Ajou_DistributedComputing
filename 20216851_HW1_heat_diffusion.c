@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 
 /* Parse an integer with a specified minimum value. */
 int parse_int(const char *text, int min_value, int *result)
@@ -83,20 +84,80 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* Step 4: Calculate process coordinates */
+
     int px = rank % PX;
     int py = rank / PX;
 
-    /* Step 5: Calculate local grid size */
+
     int localNX = NX / PX;
     int localNY = NY / PY;
 
-    printf("[V0] Rank=%d/%d Position=(%d,%d) "
-           "Local=%dx%d Steps=%d Alpha=%.2f\n",
-           rank, size, px, py,
-           localNX, localNY, steps, alpha);
+    
+    /*
+     * V1: Allocate local grids and initialize temperature.
+     * AI-generated: ChatGPT GPT-6, 2026-10-28.
+     */
 
-    /* Step 6: Finalize MPI */
+    /* V1 has no timestep update yet. */
+    if (steps != 0) {
+        if (rank == 0)
+            fprintf(stderr, "V1 supports steps=0 only.\n");
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return 1;
+    }
+
+    /* Step 1: Calculate allocated grid dimensions. */
+    size_t width  = (size_t)localNX + 2;
+    size_t height = (size_t)localNY + 2;
+
+    /* Check for possible memory-size overflow. */
+    if (height > SIZE_MAX / width ||
+        width * height > SIZE_MAX / sizeof(double)) {
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return 1;
+    }
+
+    size_t totalCells = width * height;
+
+    /* Step 2: Allocate two temperature grids. */
+    double *T_old = calloc(totalCells, sizeof(double));
+    double *T_new = calloc(totalCells, sizeof(double));
+
+    if (T_old == NULL || T_new == NULL) {
+        fprintf(stderr, "[Rank %d] Memory allocation failed.\n", rank);
+        free(T_old);
+        free(T_new);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return 1;
+    }
+
+    /* Step 3: Initialize the global top-left cell. */
+    if (rank == 0) {
+        T_old[1 * width + 1] = 100.0;
+    }
+
+    /* Step 4: Check the initial local temperature sum. */
+    double localSum = 0.0;
+
+    for (int y = 1; y <= localNY; y++) {
+        for (int x = 1; x <= localNX; x++) {
+            localSum += T_old[(size_t)y * width + x];
+        }
+    }
+
+    printf("[V1] Rank=%d Position=(%d,%d) "
+           "Interior=%dx%d Allocated=%zux%zu "
+           "LocalSum=%.2f\n",
+           rank, px, py,
+           localNX, localNY,
+           width, height, localSum);
+
+    /* Step 5: Release allocated memory. */
+    free(T_old);
+    free(T_new);
+
+
+
     MPI_Finalize();
 
     return 0;
