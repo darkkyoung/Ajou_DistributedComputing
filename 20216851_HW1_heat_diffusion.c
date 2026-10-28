@@ -88,7 +88,6 @@ int main(int argc, char **argv)
     int px = rank % PX;
     int py = rank / PX;
 
-
     int localNX = NX / PX;
     int localNY = NY / PY;
 
@@ -98,10 +97,10 @@ int main(int argc, char **argv)
      * AI-generated: ChatGPT GPT-6, 2026-10-28.
      */
 
-    /* V1 has no timestep update yet. */
-    if (steps != 0) {
+    /* V2: Multi-rank heat updates are not supported yet. */
+    if (size != 1 && steps > 0) {
         if (rank == 0)
-            fprintf(stderr, "V1 supports steps=0 only.\n");
+            fprintf(stderr, "V2 supports heat updates with 1 rank only.\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
         return 1;
     }
@@ -135,28 +134,105 @@ int main(int argc, char **argv)
     if (rank == 0) {
         T_old[1 * width + 1] = 100.0;
     }
+    
+    /*
+    * V2: Neumann boundary, 5-point stencil,
+    * and double buffering.
+    * AI-generated: ChatGPT GPT-6, 2026-10-28.
+    */
+
+    for (int step = 0; step < steps; step++) {
+
+        /* 1. Left and right Neumann boundaries */
+        for (int y = 1; y <= localNY; y++) {
+            size_t row = (size_t)y * width;
+
+            T_old[row] = T_old[row + 1];
+            T_old[row + localNX + 1] =
+                T_old[row + localNX];
+        }
+
+        /* 2. Top and bottom Neumann boundaries */
+        for (int x = 1; x <= localNX; x++) {
+            T_old[x] = T_old[width + x];
+
+            T_old[(size_t)(localNY + 1) * width + x] =
+                T_old[(size_t)localNY * width + x];
+        }
+
+        /* 3. Compute new temperatures */
+        for (int y = 1; y <= localNY; y++) {
+            for (int x = 1; x <= localNX; x++) {
+
+                size_t idx = (size_t)y * width + x;
+
+                double C = T_old[idx];
+                double N = T_old[idx - width];
+                double S = T_old[idx + width];
+                double W = T_old[idx - 1];
+                double E = T_old[idx + 1];
+
+                T_new[idx] =
+                    C + alpha * (N + S + W + E - 4.0 * C);
+            }
+        }
+
+        /* 4. Swap old and new buffers */
+        double *temp = T_old;
+        T_old = T_new;
+        T_new = temp;
+    }
+
 
     /* Step 4: Check the initial local temperature sum. */
+    
+    /*
+    * V2: Calculate local sum and maximum.
+    * AI-generated: ChatGPT GPT-6, 2026-10-28.
+    */
+
     double localSum = 0.0;
+    double localMax = -INFINITY;
 
     for (int y = 1; y <= localNY; y++) {
         for (int x = 1; x <= localNX; x++) {
-            localSum += T_old[(size_t)y * width + x];
+
+            double value =
+                T_old[(size_t)y * width + x];
+
+            localSum += value;
+
+            if (value > localMax) {
+                localMax = value;
+            }
         }
     }
 
-    printf("[V1] Rank=%d Position=(%d,%d) "
-           "Interior=%dx%d Allocated=%zux%zu "
-           "LocalSum=%.2f\n",
-           rank, px, py,
-           localNX, localNY,
-           width, height, localSum);
+    
+    printf("[V2] Rank=%d Position=(%d,%d) "
+        "Steps=%d Sum=%.12f Max=%.12f\n",
+        rank, px, py, steps, localSum, localMax);
+
+
+    /* Print the final 4x4 temperature distribution. */
+    if (rank == 0 && NX == 4 && NY == 4 &&
+        PX == 1 && PY == 1) {
+
+        for (int y = 1; y <= localNY; y++) {
+            printf("[Grid] y=%d:", y - 1);
+
+            for (int x = 1; x <= localNX; x++) {
+                printf(" %.2f",
+                    T_old[(size_t)y * width + x]);
+            }
+
+            printf("\n");
+        }
+    }
 
     /* Step 5: Release allocated memory. */
     free(T_old);
     free(T_new);
-
-
 
     MPI_Finalize();
 
