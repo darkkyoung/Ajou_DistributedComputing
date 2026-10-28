@@ -1,12 +1,24 @@
 
 /*
  * HW1 - 2D Heat Diffusion
- * V0: MPI Initialization and Input Validation
  *
  * AI assistance: ChatGPT (OpenAI), GPT-6
- * Date: 2026-10-28
- * AI-generated: V0 program structure, input parsing,
- * MPI initialization, and rank mapping.
+ * Dates: 2026-10-28 to 2026-10-29
+ *
+ * AI-generated/modified code:
+ * V0: MPI initialization and input validation
+ * V1: Local grid allocation and initialization
+ * V2: Stencil computation and double buffering
+ * V3: Domain decomposition and neighbor mapping
+ * V4: Vertical halo exchange
+ * V5: Horizontal halo exchange
+ * V6: Full 2D communication integration
+ * V7: Global statistics, timing, and grid reconstruction
+ * V8: Optional debug output for performance experiments
+ *
+ * Development and correctness tests were performed
+ * incrementally. Performance measurements are reported
+ * separately using actual MPI execution results.
  */
 
 #include <mpi.h>
@@ -112,11 +124,14 @@ int main(int argc, char **argv)
      */
 
     /* Global coordinates of this rank's interior */
-    int startX = px * localNX;
-    int startY = py * localNY;
+    #ifdef HW1_DEBUG_MAP
+        /* V8: Global coordinates used for debug output. */
+        int startX = px * localNX;
+        int startY = py * localNY;
 
-    int endX = startX + localNX - 1;
-    int endY = startY + localNY - 1;
+        int endX = startX + localNX - 1;
+        int endY = startY + localNY - 1;
+    #endif
 
     /* Neighbor ranks (-1 means no neighbor) */
     int left  = (px > 0) ? rank - 1 : -1;
@@ -143,14 +158,15 @@ int main(int argc, char **argv)
 
     
     /* V3: Print process ownership and neighbors. */
-    printf("[V3-Map] Rank=%d Position=(%d,%d) "
-           "GlobalX=%d..%d GlobalY=%d..%d "
-           "Neighbors(L,R,U,D)=(%d,%d,%d,%d)\n",
-           rank, px, py,
-           startX, endX, startY, endY,
-           left, right, up, down);
-
-
+    #ifdef HW1_DEBUG_MAP
+        /* V8: Optional process-grid debug output. */
+        printf("[V3-Map] Rank=%d Position=(%d,%d) "
+            "GlobalX=%d..%d GlobalY=%d..%d "
+            "Neighbors(L,R,U,D)=(%d,%d,%d,%d)\n",
+            rank, px, py,
+            startX, endX, startY, endY,
+            left, right, up, down);
+    #endif
 
     /* Step 1: Calculate allocated grid dimensions. */
     size_t width  = (size_t)localNX + 2;
