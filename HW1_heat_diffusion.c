@@ -1,5 +1,5 @@
 /*
- * 2D Heat Diffusion — V1 educational implementation milestone.
+ * 2D Heat Diffusion — V2 educational implementation milestone.
  * AI disclosure: ChatGPT (OpenAI), GPT-6, 2026-10-28.
  * AI-generated reference code: the entire file, including input parsing,
  * domain decomposition, boundary handling, halo communication, stencil,
@@ -109,6 +109,54 @@ static double *allocate_grid(const Domain *d)
     return grid;
 }
 
+static void apply_neumann(double *old, const Domain *d)
+{
+    if (d->left < 0) {
+        for (int y = 1; y <= d->ly; ++y)
+            old[cell_index(d, 0, y)] = old[cell_index(d, 1, y)];
+    }
+    if (d->right < 0) {
+        for (int y = 1; y <= d->ly; ++y)
+            old[cell_index(d, d->lx + 1, y)] = old[cell_index(d, d->lx, y)];
+    }
+    if (d->up < 0) {
+        for (int x = 1; x <= d->lx; ++x)
+            old[cell_index(d, x, 0)] = old[cell_index(d, x, 1)];
+    }
+    if (d->down < 0) {
+        for (int x = 1; x <= d->lx; ++x)
+            old[cell_index(d, x, d->ly + 1)] = old[cell_index(d, x, d->ly)];
+    }
+}
+
+static void stencil_step(const double *old, double *next,
+                         const Domain *d, double alpha)
+{
+    size_t stride = (size_t)d->lx + 2;
+    for (int y = 1; y <= d->ly; ++y) {
+        for (int x = 1; x <= d->lx; ++x) {
+            size_t c = cell_index(d, x, y);
+            next[c] = old[c] + alpha * (old[c-stride] + old[c+stride] +
+                                         old[c-1] + old[c+1] - 4.0*old[c]);
+        }
+    }
+}
+
+static void local_statistics(const double *old, const Domain *d,
+                             double *sum, double *maximum)
+{
+    *sum = 0.0;
+    *maximum = -DBL_MAX;
+    for (int y = 1; y <= d->ly; ++y) {
+        for (int x = 1; x <= d->lx; ++x) {
+            double value = old[cell_index(d, x, y)];
+            *sum += value;
+            if (value > *maximum)
+                *maximum = value;
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     MPI_Init(&argc, &argv);
@@ -126,12 +174,22 @@ int main(int argc, char **argv)
     }
     Domain d;
     configure_domain(&p, rank, size, &d);
-    if (p.steps != 0) fail(rank, "V1 supports steps=0 only");
+    /* V2: incremental implementation before global statistics. */
+    if (size != 1) fail(rank, "V2 only supports one MPI rank");
     double *old = allocate_grid(&d);
     double *next = allocate_grid(&d);
     if (rank == 0) old[cell_index(&d, 1, 1)] = 100.0;
-    printf("[V1] rank=%d local=%dx%d initial-origin=%.2f\n",
-           rank, d.lx, d.ly, old[cell_index(&d, 1, 1)]);
+    for (int step = 0; step < p.steps; ++step) {
+        apply_neumann(old, &d);
+        stencil_step(old, next, &d, p.alpha);
+        double *tmp = old;
+        old = next;
+        next = tmp;
+    }
+    double local_sum, local_max;
+    local_statistics(old, &d, &local_sum, &local_max);
+    printf("[V2 LOCAL] rank=%d sum=%.12f max=%.12f\n",
+           rank, local_sum, local_max);
     free(old);
     free(next);
     MPI_Finalize();
