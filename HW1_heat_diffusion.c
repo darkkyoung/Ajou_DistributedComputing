@@ -1,5 +1,5 @@
 /*
- * 2D Heat Diffusion — V0 educational implementation milestone.
+ * 2D Heat Diffusion — V1 educational implementation milestone.
  * AI disclosure: ChatGPT (OpenAI), GPT-6, 2026-10-28.
  * AI-generated reference code: the entire file, including input parsing,
  * domain decomposition, boundary handling, halo communication, stencil,
@@ -30,6 +30,13 @@ typedef struct {
     int px, py, lx, ly;
     int left, right, up, down;  /* -1 means no neighbor */
 } Domain;
+
+static void fail(int rank, const char *message)
+{
+    fprintf(stderr, "[rank %d] %s\n", rank, message);
+    MPI_Abort(MPI_COMM_WORLD, 1);
+    exit(EXIT_FAILURE);
+}
 
 static int parse_int(const char *text, int allow_zero, int *out)
 {
@@ -82,6 +89,26 @@ static void configure_domain(const Params *p, int rank, int size, Domain *d)
     d->down = (d->py + 1 < p->py) ? rank + p->px : -1;
 }
 
+static size_t cell_index(const Domain *d, int x, int y)
+{
+    return (size_t)y * ((size_t)d->lx + 2) + (size_t)x;
+}
+
+static double *allocate_grid(const Domain *d)
+{
+    size_t width = (size_t)d->lx + 2;
+    size_t height = (size_t)d->ly + 2;
+    if (height > SIZE_MAX / width ||
+        width * height > SIZE_MAX / sizeof(double)) {
+        fail(d->rank, "Local grid is too large");
+    }
+    double *grid = calloc(width * height, sizeof(double));
+    if (!grid) {
+        fail(d->rank, "Failed to allocate local grid");
+    }
+    return grid;
+}
+
 int main(int argc, char **argv)
 {
     MPI_Init(&argc, &argv);
@@ -99,8 +126,14 @@ int main(int argc, char **argv)
     }
     Domain d;
     configure_domain(&p, rank, size, &d);
-    printf("[V0] rank=%d/%d position=(%d,%d) local=%dx%d\n",
-           rank, size, d.px, d.py, d.lx, d.ly);
+    if (p.steps != 0) fail(rank, "V1 supports steps=0 only");
+    double *old = allocate_grid(&d);
+    double *next = allocate_grid(&d);
+    if (rank == 0) old[cell_index(&d, 1, 1)] = 100.0;
+    printf("[V1] rank=%d local=%dx%d initial-origin=%.2f\n",
+           rank, d.lx, d.ly, old[cell_index(&d, 1, 1)]);
+    free(old);
+    free(next);
     MPI_Finalize();
     return EXIT_SUCCESS;
 }
