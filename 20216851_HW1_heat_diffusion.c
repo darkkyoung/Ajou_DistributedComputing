@@ -18,15 +18,18 @@
 #include <stdint.h>
 
 /*
- * V4/V5: Message tags for four directions.
+ * V7: Additional message tags for statistics and grid gathering.
  * AI-generated: ChatGPT GPT-6, 2026-10-29.
  */
 enum {
     TAG_LEFT = 10,
     TAG_RIGHT = 11,
     TAG_UP = 12,
-    TAG_DOWN = 13
+    TAG_DOWN = 13,
+    TAG_STATS = 100,
+    TAG_GRID = 101
 };
+
 
 /* Parse an integer with a specified minimum value. */
 int parse_int(const char *text, int min_value, int *result)
@@ -213,7 +216,9 @@ int main(int argc, char **argv)
     * and double buffering.
     * AI-generated: ChatGPT GPT-6, 2026-10-28.
     */
-
+    /* V7: Start measuring the simulation loop. */
+    /* AI-generated: ChatGPT GPT-6, 2026-10-29. */
+    double simulationStart = MPI_Wtime();
     for (int step = 0; step < steps; step++) {
 
         
@@ -383,6 +388,9 @@ int main(int argc, char **argv)
         T_new = temp;
     }
 
+    /* V7: End timing before gathering statistics. */
+    double localElapsed = MPI_Wtime() - simulationStart;
+
 
     /* V6: Calculate final local statistics (interior only). */
     
@@ -408,27 +416,148 @@ int main(int argc, char **argv)
         }
     }
 
-    
-    printf("[V6] Rank=%d Position=(%d,%d) "
-        "Steps=%d Sum=%.12f Max=%.12f\n",
-        rank, px, py, steps, localSum, localMax);
+    /*
+     * V7: Collect global statistics using MPI_Send/MPI_Recv.
+     * AI-generated: ChatGPT GPT-6, 2026-10-29.
+     */
 
+    double stats[3] = {
+        localSum,
+        localMax,
+        localElapsed
+    };
 
-    /* Print the final 4x4 temperature distribution. */
-    if (rank == 0 && NX == 4 && NY == 4 &&
-        PX == 1 && PY == 1) {
+    if (rank == 0) {
 
-        for (int y = 1; y <= localNY; y++) {
-            printf("[Grid] y=%d:", y - 1);
+        double globalSum = localSum;
+        double globalMax = localMax;
+        double maxElapsed = localElapsed;
 
-            for (int x = 1; x <= localNX; x++) {
-                printf(" %.2f",
-                    T_old[(size_t)y * width + x]);
+        /* Receive results from all other ranks. */
+        for (int src = 1; src < size; src++) {
+
+            double received[3];
+
+            MPI_Recv(
+                received, 3, MPI_DOUBLE,
+                src, TAG_STATS,
+                MPI_COMM_WORLD, MPI_STATUS_IGNORE
+            );
+
+            globalSum += received[0];
+
+            if (received[1] > globalMax) {
+                globalMax = received[1];
             }
 
-            printf("\n");
+            if (received[2] > maxElapsed) {
+                maxElapsed = received[2];
+            }
+        }
+
+        printf("[Result] NX=%d NY=%d Grid=%dx%d "
+               "Procs=%d Steps=%d "
+               "Sum=%.12f Max=%.12f Time=%.9f\n",
+               NX, NY, PX, PY,
+               size, steps,
+               globalSum, globalMax, maxElapsed);
+
+    } else {
+
+        /* Every non-root rank sends three doubles to rank 0. */
+        MPI_Send(
+            stats, 3, MPI_DOUBLE,
+            0, TAG_STATS, MPI_COMM_WORLD
+        );
+    }
+
+
+
+    
+    /*
+     * V7: Reconstruct final global 4x4 temperature grid.
+     * AI-generated: ChatGPT GPT-6, 2026-10-29.
+     *
+     * Diagnostic only: excluded from measured simulation time.
+     */
+
+    if (NX == 4 && NY == 4) {
+
+        int localCount = localNX * localNY;
+        double localBlock[16] = {0};
+
+        /* Step 1: Pack local interior into a contiguous array. */
+        int k = 0;
+
+        for (int y = 1; y <= localNY; y++) {
+            for (int x = 1; x <= localNX; x++) {
+                localBlock[k++] =
+                    T_old[(size_t)y * width + x];
+            }
+        }
+
+        if (rank == 0) {
+
+            double globalGrid[16] = {0};
+
+            /* Step 2: Collect each rank's local block. */
+            for (int src = 0; src < size; src++) {
+
+                double received[16];
+                const double *block = localBlock;
+
+                if (src != 0) {
+                    MPI_Recv(
+                        received, localCount, MPI_DOUBLE,
+                        src, TAG_GRID,
+                        MPI_COMM_WORLD, MPI_STATUS_IGNORE
+                    );
+
+                    block = received;
+                }
+
+                /* Step 3: Find the block's global origin. */
+                int originX = (src % PX) * localNX;
+                int originY = (src / PX) * localNY;
+
+                /* Step 4: Copy block values to global coordinates. */
+                for (int y = 0; y < localNY; y++) {
+                    for (int x = 0; x < localNX; x++) {
+
+                        int globalIndex =
+                            (originY + y) * NX + (originX + x);
+
+                        int localIndex = y * localNX + x;
+
+                        globalGrid[globalIndex] =
+                            block[localIndex];
+                    }
+                }
+            }
+
+            /* Step 5: Print the final global grid. */
+            for (int y = 0; y < NY; y++) {
+
+                printf("[Grid] y=%d:", y);
+
+                for (int x = 0; x < NX; x++) {
+                    printf(" %.12f",
+                           globalGrid[y * NX + x]);
+                }
+
+                printf("\n");
+            }
+
+        } else {
+
+            /* Non-root ranks send their interior values. */
+            MPI_Send(
+                localBlock, localCount, MPI_DOUBLE,
+                0, TAG_GRID, MPI_COMM_WORLD
+            );
         }
     }
+
 
     /* Release all allocated buffers. */
     free(sendColumn);
