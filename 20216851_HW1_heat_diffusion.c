@@ -93,17 +93,51 @@ int main(int argc, char **argv)
 
     
     /*
+     * V3: Global coordinates and neighbor rank mapping.
+     * AI-generated: ChatGPT GPT-6, 2026-10-28.
+     */
+
+    /* Global coordinates of this rank's interior */
+    int startX = px * localNX;
+    int startY = py * localNY;
+
+    int endX = startX + localNX - 1;
+    int endY = startY + localNY - 1;
+
+    /* Neighbor ranks (-1 means no neighbor) */
+    int left  = (px > 0) ? rank - 1 : -1;
+    int right = (px < PX - 1) ? rank + 1 : -1;
+
+    int up    = (py > 0) ? rank - PX : -1;
+    int down  = (py < PY - 1) ? rank + PX : -1;
+
+    
+    /*
      * V1: Allocate local grids and initialize temperature.
      * AI-generated: ChatGPT GPT-6, 2026-10-28.
      */
 
-    /* V2: Multi-rank heat updates are not supported yet. */
+    
+    /* V3: Multi-rank heat updates require halo exchange (V4+). */
     if (size != 1 && steps > 0) {
         if (rank == 0)
-            fprintf(stderr, "V2 supports heat updates with 1 rank only.\n");
+            fprintf(stderr,
+                    "V3: Multi-rank heat updates require halo exchange.\n");
+
         MPI_Abort(MPI_COMM_WORLD, 1);
         return 1;
     }
+
+    
+    /* V3: Print process ownership and neighbors. */
+    printf("[V3-Map] Rank=%d Position=(%d,%d) "
+           "GlobalX=%d..%d GlobalY=%d..%d "
+           "Neighbors(L,R,U,D)=(%d,%d,%d,%d)\n",
+           rank, px, py,
+           startX, endX, startY, endY,
+           left, right, up, down);
+
+
 
     /* Step 1: Calculate allocated grid dimensions. */
     size_t width  = (size_t)localNX + 2;
@@ -209,7 +243,7 @@ int main(int argc, char **argv)
     }
 
     
-    printf("[V2] Rank=%d Position=(%d,%d) "
+    printf("[V3] Rank=%d Position=(%d,%d) "
         "Steps=%d Sum=%.12f Max=%.12f\n",
         rank, px, py, steps, localSum, localMax);
 
