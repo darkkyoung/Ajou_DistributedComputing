@@ -1,5 +1,5 @@
 /*
- * 2D Heat Diffusion — V5 educational implementation milestone.
+ * 2D Heat Diffusion — V6 educational implementation milestone.
  * AI disclosure: ChatGPT (OpenAI), GPT-6, 2026-10-28.
  * AI-generated reference code: the entire file, including input parsing,
  * domain decomposition, boundary handling, halo communication, stencil,
@@ -221,8 +221,7 @@ int main(int argc, char **argv)
     }
     Domain d;
     configure_domain(&p, rank, size, &d);
-    /* V5: incremental MPI heat diffusion implementation. */
-    if (p.px != 1 && p.py != 1) fail(rank, "V5 supports only 1D stripes");
+    /* V6: incremental MPI heat diffusion implementation. */
     double *old = allocate_grid(&d);
     double *next = allocate_grid(&d);
     if (rank == 0) old[cell_index(&d, 1, 1)] = 100.0;
@@ -240,7 +239,7 @@ int main(int argc, char **argv)
     }
     double local_sum, local_max;
     local_statistics(old, &d, &local_sum, &local_max);
-    printf("[V5 LOCAL] rank=%d sum=%.12f max=%.12f\n",
+    printf("[V6 LOCAL] rank=%d sum=%.12f max=%.12f\n",
            rank, local_sum, local_max);
     free(sendbuf);
     free(recvbuf);
