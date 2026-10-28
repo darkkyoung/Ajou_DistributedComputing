@@ -1,5 +1,5 @@
 /*
- * 2D Heat Diffusion — V3 educational implementation milestone.
+ * 2D Heat Diffusion — V4 educational implementation milestone.
  * AI disclosure: ChatGPT (OpenAI), GPT-6, 2026-10-28.
  * AI-generated reference code: the entire file, including input parsing,
  * domain decomposition, boundary handling, halo communication, stencil,
@@ -129,6 +129,22 @@ static void apply_neumann(double *old, const Domain *d)
     }
 }
 
+static void exchange_rows(double *old, const Domain *d)
+{
+    if (d->up >= 0) {
+        MPI_Recv(&old[cell_index(d, 1, 0)], d->lx, MPI_DOUBLE, d->up, TAG_DOWN,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Send(&old[cell_index(d, 1, 1)], d->lx, MPI_DOUBLE, d->up, TAG_UP,
+                 MPI_COMM_WORLD);
+    }
+    if (d->down >= 0) {
+        MPI_Send(&old[cell_index(d, 1, d->ly)], d->lx, MPI_DOUBLE, d->down,
+                 TAG_DOWN, MPI_COMM_WORLD);
+        MPI_Recv(&old[cell_index(d, 1, d->ly + 1)], d->lx, MPI_DOUBLE, d->down,
+                 TAG_UP, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
+}
+
 static void stencil_step(const double *old, double *next,
                          const Domain *d, double alpha)
 {
@@ -174,13 +190,14 @@ int main(int argc, char **argv)
     }
     Domain d;
     configure_domain(&p, rank, size, &d);
-    /* V3: incremental implementation before global statistics. */
-    if (size != 1 && p.steps != 0) fail(rank, "V3 supports multiple ranks only for steps=0");
+    /* V4: incremental MPI heat diffusion implementation. */
+    if (p.px != 1) fail(rank, "V4 supports only 1xPY row partitions");
     double *old = allocate_grid(&d);
     double *next = allocate_grid(&d);
     if (rank == 0) old[cell_index(&d, 1, 1)] = 100.0;
     for (int step = 0; step < p.steps; ++step) {
         apply_neumann(old, &d);
+        exchange_rows(old, &d);
         stencil_step(old, next, &d, p.alpha);
         double *tmp = old;
         old = next;
@@ -188,9 +205,7 @@ int main(int argc, char **argv)
     }
     double local_sum, local_max;
     local_statistics(old, &d, &local_sum, &local_max);
-    printf("[V3] rank=%d pos=(%d,%d) nbrs=(%d,%d,%d,%d) ",
-           rank, d.px, d.py, d.left, d.right, d.up, d.down);
-    printf("[V3 LOCAL] rank=%d sum=%.12f max=%.12f\n",
+    printf("[V4 LOCAL] rank=%d sum=%.12f max=%.12f\n",
            rank, local_sum, local_max);
     free(old);
     free(next);
