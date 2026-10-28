@@ -1,0 +1,24 @@
+name: HW1 MPI reference correctness
+
+on:
+  push:
+    branches:
+      - reference/hw1-step-by-step
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mpi-correctness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout reference branch
+        uses: actions/checkout@v4
+      - name: Install Open MPI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openmpi-bin libopenmpi-dev
+      - name: Verify with MPI_Send and MPI_Recv
+        run: python3 tests/check_correctness.py
