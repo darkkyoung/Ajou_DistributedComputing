@@ -18,10 +18,12 @@
 #include <stdint.h>
 
 /*
- * V4: MPI message tags for vertical halo exchange.
- * AI-generated: ChatGPT GPT-6, 2026-10-28.
+ * V4/V5: Message tags for four directions.
+ * AI-generated: ChatGPT GPT-6, 2026-10-29.
  */
 enum {
+    TAG_LEFT = 10,
+    TAG_RIGHT = 11,
     TAG_UP = 12,
     TAG_DOWN = 13
 };
@@ -127,11 +129,11 @@ int main(int argc, char **argv)
      */
 
     
-    /* V4: Only vertical process grids support heat updates. */
-    if (PX != 1 && steps > 0) {
+    /* V5: Supports 1D horizontal or vertical partitions. */
+    if (PX > 1 && PY > 1 && steps > 0) {
         if (rank == 0)
             fprintf(stderr,
-                    "V4 supports only PX=1 for heat updates.\n");
+                    "V5 supports only 1D process grids.\n");
 
         MPI_Abort(MPI_COMM_WORLD, 1);
         return 1;
@@ -172,6 +174,35 @@ int main(int argc, char **argv)
         MPI_Abort(MPI_COMM_WORLD, 1);
         return 1;
     }
+
+    
+    /*
+     * V5: Temporary column buffers.
+     * AI-generated: ChatGPT GPT-6, 2026-10-29.
+     */
+
+    double *sendColumn = NULL;
+    double *recvColumn = NULL;
+
+    if (PX > 1) {
+        sendColumn = malloc((size_t)localNY * sizeof(double));
+        recvColumn = malloc((size_t)localNY * sizeof(double));
+
+        if (sendColumn == NULL || recvColumn == NULL) {
+            fprintf(stderr,
+                    "[Rank %d] Column buffer allocation failed.\n",
+                    rank);
+
+            free(sendColumn);
+            free(recvColumn);
+            free(T_old);
+            free(T_new);
+
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return 1;
+        }
+    }
+
 
     /* Step 3: Initialize the global top-left cell. */
     if (rank == 0) {
@@ -223,6 +254,72 @@ int main(int argc, char **argv)
                     T_old[(size_t)localNY * width + x];
             }
         }
+
+        /*
+         * V5: Horizontal Halo Exchange.
+         * Left: Recv -> Send
+         * Right: Send -> Recv
+         * AI-generated: ChatGPT GPT-6, 2026-10-29.
+         */
+
+        /* Exchange with the left neighbor */
+        if (left != -1) {
+
+            /* 1. Receive right boundary of left neighbor */
+            MPI_Recv(
+                recvColumn, localNY, MPI_DOUBLE,
+                left, TAG_RIGHT,
+                MPI_COMM_WORLD, MPI_STATUS_IGNORE
+            );
+
+            /* 2. Unpack into left halo column (x=0) */
+            for (int y = 1; y <= localNY; y++) {
+                T_old[(size_t)y * width] =
+                    recvColumn[y - 1];
+            }
+
+            /* 3. Pack our first interior column (x=1) */
+            for (int y = 1; y <= localNY; y++) {
+                sendColumn[y - 1] =
+                    T_old[(size_t)y * width + 1];
+            }
+
+            /* 4. Send to left neighbor */
+            MPI_Send(
+                sendColumn, localNY, MPI_DOUBLE,
+                left, TAG_LEFT, MPI_COMM_WORLD
+            );
+        }
+
+        /* Exchange with the right neighbor */
+        if (right != -1) {
+
+            /* 1. Pack our last interior column */
+            for (int y = 1; y <= localNY; y++) {
+                sendColumn[y - 1] =
+                    T_old[(size_t)y * width + localNX];
+            }
+
+            /* 2. Send to right neighbor */
+            MPI_Send(
+                sendColumn, localNY, MPI_DOUBLE,
+                right, TAG_RIGHT, MPI_COMM_WORLD
+            );
+
+            /* 3. Receive first column of right neighbor */
+            MPI_Recv(
+                recvColumn, localNY, MPI_DOUBLE,
+                right, TAG_LEFT,
+                MPI_COMM_WORLD, MPI_STATUS_IGNORE
+            );
+
+            /* 4. Unpack into right halo column */
+            for (int y = 1; y <= localNY; y++) {
+                T_old[(size_t)y * width + localNX + 1] =
+                    recvColumn[y - 1];
+            }
+        }
+
 
         /*
          * V4: Vertical Halo Exchange.
@@ -313,7 +410,7 @@ int main(int argc, char **argv)
     }
 
     
-    printf("[V4] Rank=%d Position=(%d,%d) "
+    printf("[V5] Rank=%d Position=(%d,%d) "
         "Steps=%d Sum=%.12f Max=%.12f\n",
         rank, px, py, steps, localSum, localMax);
 
@@ -334,7 +431,9 @@ int main(int argc, char **argv)
         }
     }
 
-    /* Step 5: Release allocated memory. */
+    /* Release all allocated buffers. */
+    free(sendColumn);
+    free(recvColumn);
     free(T_old);
     free(T_new);
 
