@@ -129,15 +129,14 @@ int main(int argc, char **argv)
      */
 
     
-    /* V5: Supports 1D horizontal or vertical partitions. */
-    if (PX > 1 && PY > 1 && steps > 0) {
-        if (rank == 0)
-            fprintf(stderr,
-                    "V5 supports only 1D process grids.\n");
-
-        MPI_Abort(MPI_COMM_WORLD, 1);
-        return 1;
-    }
+    /*
+    * V6: Full 2D process-grid support.
+    *
+    * Horizontal and vertical halo exchanges are both enabled.
+    * Valid PX x PY decompositions are accepted.
+    *
+    * AI-assisted integration: ChatGPT GPT-6, 2026-10-29.
+    */
 
     
     /* V3: Print process ownership and neighbors. */
@@ -385,7 +384,7 @@ int main(int argc, char **argv)
     }
 
 
-    /* Step 4: Check the initial local temperature sum. */
+    /* V6: Calculate final local statistics (interior only). */
     
     /*
     * V2: Calculate local sum and maximum.
@@ -410,7 +409,7 @@ int main(int argc, char **argv)
     }
 
     
-    printf("[V5] Rank=%d Position=(%d,%d) "
+    printf("[V6] Rank=%d Position=(%d,%d) "
         "Steps=%d Sum=%.12f Max=%.12f\n",
         rank, px, py, steps, localSum, localMax);
 
