@@ -1,5 +1,5 @@
 /*
- * 2D Heat Diffusion — V6 educational implementation milestone.
+ * 2D Heat Diffusion — educational MPI_Send/MPI_Recv reference solution.
  * AI disclosure: ChatGPT (OpenAI), GPT-6, 2026-10-28.
  * AI-generated reference code: the entire file, including input parsing,
  * domain decomposition, boundary handling, halo communication, stencil,
@@ -109,6 +109,7 @@ static double *allocate_grid(const Domain *d)
     return grid;
 }
 
+/* AI-generated: zero-flux boundary copies are made on T_old every step. */
 static void apply_neumann(double *old, const Domain *d)
 {
     if (d->left < 0) {
@@ -141,6 +142,7 @@ static void unpack_column(double *old, const Domain *d, int x, const double *buf
         old[cell_index(d, x, y)] = buf[y - 1];
 }
 
+/* AI-generated: Left Recv->Send, Right Send->Recv, with matching sender tags. */
 static void exchange_columns(double *old, const Domain *d,
                              double *sendbuf, double *recvbuf)
 {
@@ -160,6 +162,7 @@ static void exchange_columns(double *old, const Domain *d,
     }
 }
 
+/* AI-generated: Up Recv->Send, Down Send->Recv, row-major contiguous rows. */
 static void exchange_rows(double *old, const Domain *d)
 {
     if (d->up >= 0) {
@@ -176,6 +179,7 @@ static void exchange_rows(double *old, const Domain *d)
     }
 }
 
+/* AI-generated: synchronous 5-point stencil, reads only old and writes new. */
 static void stencil_step(const double *old, double *next,
                          const Domain *d, double alpha)
 {
@@ -204,12 +208,73 @@ static void local_statistics(const double *old, const Domain *d,
     }
 }
 
+/* AI-generated: manual point-to-point gather; measurement already finished. */
+static void report_statistics(const Params *p, const Domain *d,
+                              double local_sum, double local_max, double elapsed)
+{
+    double packet[3] = { local_sum, local_max, elapsed };
+    if (d->rank == 0) {
+        double sum = local_sum, maximum = local_max, seconds = elapsed;
+        for (int src = 1; src < d->size; ++src) {
+            double received[3];
+            MPI_Recv(received, 3, MPI_DOUBLE, src, TAG_STATS,
+                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            sum += received[0];
+            if (received[1] > maximum) maximum = received[1];
+            if (received[2] > seconds) seconds = received[2];
+        }
+        printf("[Result] NX=%d NY=%d Grid=%dx%d Procs=%d Steps=%d "
+               "Sum=%.12f Max=%.12f Time=%.9f\n",
+               p->nx, p->ny, p->px, p->py, d->size, p->steps,
+               sum, maximum, seconds);
+    } else {
+        MPI_Send(packet, 3, MPI_DOUBLE, 0, TAG_STATS, MPI_COMM_WORLD);
+    }
+}
+
+/* AI-generated: 4x4 diagnostic gather, outside the timed simulation loop. */
+static void print_grid4(const Params *p, const Domain *d, const double *old)
+{
+    if (p->nx != 4 || p->ny != 4) return;
+    double packed[16];
+    int count = d->lx * d->ly;
+    int i = 0;
+    for (int y = 1; y <= d->ly; ++y)
+        for (int x = 1; x <= d->lx; ++x)
+            packed[i++] = old[cell_index(d, x, y)];
+
+    if (d->rank != 0) {
+        MPI_Send(packed, count, MPI_DOUBLE, 0, TAG_GRID, MPI_COMM_WORLD);
+        return;
+    }
+    double global[16] = {0};
+    for (int src = 0; src < d->size; ++src) {
+        double received[16];
+        const double *part = packed;
+        if (src != 0) {
+            MPI_Recv(received, count, MPI_DOUBLE, src, TAG_GRID,
+                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            part = received;
+        }
+        int origin_x = (src % p->px) * d->lx;
+        int origin_y = (src / p->px) * d->ly;
+        for (int y = 0; y < d->ly; ++y)
+            for (int x = 0; x < d->lx; ++x)
+                global[(origin_y+y)*4 + origin_x+x] = part[y*d->lx+x];
+    }
+    for (int y = 0; y < 4; ++y) {
+        printf("[Grid] y=%d: %.12f %.12f %.12f %.12f\n", y,
+               global[4*y], global[4*y+1], global[4*y+2], global[4*y+3]);
+    }
+}
+
 int main(int argc, char **argv)
 {
     MPI_Init(&argc, &argv);
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+
     Params p;
     if (!parse_params(argc, argv, size, &p)) {
         if (rank == 0)
@@ -219,15 +284,18 @@ int main(int argc, char **argv)
         MPI_Abort(MPI_COMM_WORLD, 1);
         return EXIT_FAILURE;
     }
+
     Domain d;
     configure_domain(&p, rank, size, &d);
-    /* V6: incremental MPI heat diffusion implementation. */
     double *old = allocate_grid(&d);
     double *next = allocate_grid(&d);
-    if (rank == 0) old[cell_index(&d, 1, 1)] = 100.0;
     double *sendbuf = malloc((size_t)d.ly * sizeof(double));
     double *recvbuf = malloc((size_t)d.ly * sizeof(double));
     if (!sendbuf || !recvbuf) fail(rank, "Failed to allocate column buffers");
+
+    if (rank == 0) old[cell_index(&d, 1, 1)] = 100.0;
+
+    double start = MPI_Wtime();
     for (int step = 0; step < p.steps; ++step) {
         apply_neumann(old, &d);
         exchange_columns(old, &d, sendbuf, recvbuf);
@@ -237,10 +305,13 @@ int main(int argc, char **argv)
         old = next;
         next = tmp;
     }
+    double elapsed = MPI_Wtime() - start;
+
     double local_sum, local_max;
     local_statistics(old, &d, &local_sum, &local_max);
-    printf("[V6 LOCAL] rank=%d sum=%.12f max=%.12f\n",
-           rank, local_sum, local_max);
+    report_statistics(&p, &d, local_sum, local_max, elapsed);
+    print_grid4(&p, &d, old);
+
     free(sendbuf);
     free(recvbuf);
     free(old);
