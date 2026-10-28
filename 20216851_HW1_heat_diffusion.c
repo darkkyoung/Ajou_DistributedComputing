@@ -17,6 +17,15 @@
 #include <math.h>
 #include <stdint.h>
 
+/*
+ * V4: MPI message tags for vertical halo exchange.
+ * AI-generated: ChatGPT GPT-6, 2026-10-28.
+ */
+enum {
+    TAG_UP = 12,
+    TAG_DOWN = 13
+};
+
 /* Parse an integer with a specified minimum value. */
 int parse_int(const char *text, int min_value, int *result)
 {
@@ -118,11 +127,11 @@ int main(int argc, char **argv)
      */
 
     
-    /* V3: Multi-rank heat updates require halo exchange (V4+). */
-    if (size != 1 && steps > 0) {
+    /* V4: Only vertical process grids support heat updates. */
+    if (PX != 1 && steps > 0) {
         if (rank == 0)
             fprintf(stderr,
-                    "V3: Multi-rank heat updates require halo exchange.\n");
+                    "V4 supports only PX=1 for heat updates.\n");
 
         MPI_Abort(MPI_COMM_WORLD, 1);
         return 1;
@@ -177,22 +186,83 @@ int main(int argc, char **argv)
 
     for (int step = 0; step < steps; step++) {
 
-        /* 1. Left and right Neumann boundaries */
-        for (int y = 1; y <= localNY; y++) {
-            size_t row = (size_t)y * width;
+        
+        /*
+         * V4: Apply Neumann condition only at global boundaries.
+         * AI-generated: ChatGPT GPT-6, 2026-10-28.
+         */
 
-            T_old[row] = T_old[row + 1];
-            T_old[row + localNX + 1] =
-                T_old[row + localNX];
+        /* Left global boundary */
+        if (left == -1) {
+            for (int y = 1; y <= localNY; y++) {
+                size_t row = (size_t)y * width;
+                T_old[row] = T_old[row + 1];
+            }
         }
 
-        /* 2. Top and bottom Neumann boundaries */
-        for (int x = 1; x <= localNX; x++) {
-            T_old[x] = T_old[width + x];
-
-            T_old[(size_t)(localNY + 1) * width + x] =
-                T_old[(size_t)localNY * width + x];
+        /* Right global boundary */
+        if (right == -1) {
+            for (int y = 1; y <= localNY; y++) {
+                size_t row = (size_t)y * width;
+                T_old[row + localNX + 1] =
+                    T_old[row + localNX];
+            }
         }
+
+        /* Top global boundary */
+        if (up == -1) {
+            for (int x = 1; x <= localNX; x++) {
+                T_old[x] = T_old[width + x];
+            }
+        }
+
+        /* Bottom global boundary */
+        if (down == -1) {
+            for (int x = 1; x <= localNX; x++) {
+                T_old[(size_t)(localNY + 1) * width + x] =
+                    T_old[(size_t)localNY * width + x];
+            }
+        }
+
+        /*
+         * V4: Vertical Halo Exchange.
+         * Up: Recv -> Send
+         * Down: Send -> Recv
+         * AI-generated: ChatGPT GPT-6, 2026-10-28.
+         */
+
+        if (up != -1) {
+            MPI_Recv(
+                &T_old[1],
+                localNX, MPI_DOUBLE,
+                up, TAG_DOWN,
+                MPI_COMM_WORLD, MPI_STATUS_IGNORE
+            );
+
+            MPI_Send(
+                &T_old[width + 1],
+                localNX, MPI_DOUBLE,
+                up, TAG_UP,
+                MPI_COMM_WORLD
+            );
+        }
+
+        if (down != -1) {
+            MPI_Send(
+                &T_old[(size_t)localNY * width + 1],
+                localNX, MPI_DOUBLE,
+                down, TAG_DOWN,
+                MPI_COMM_WORLD
+            );
+
+            MPI_Recv(
+                &T_old[(size_t)(localNY + 1) * width + 1],
+                localNX, MPI_DOUBLE,
+                down, TAG_UP,
+                MPI_COMM_WORLD, MPI_STATUS_IGNORE
+            );
+        }
+
 
         /* 3. Compute new temperatures */
         for (int y = 1; y <= localNY; y++) {
@@ -243,7 +313,7 @@ int main(int argc, char **argv)
     }
 
     
-    printf("[V3] Rank=%d Position=(%d,%d) "
+    printf("[V4] Rank=%d Position=(%d,%d) "
         "Steps=%d Sum=%.12f Max=%.12f\n",
         rank, px, py, steps, localSum, localMax);
 
