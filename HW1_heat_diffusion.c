@@ -1,5 +1,5 @@
 /*
- * 2D Heat Diffusion — V4 educational implementation milestone.
+ * 2D Heat Diffusion — V5 educational implementation milestone.
  * AI disclosure: ChatGPT (OpenAI), GPT-6, 2026-10-28.
  * AI-generated reference code: the entire file, including input parsing,
  * domain decomposition, boundary handling, halo communication, stencil,
@@ -129,6 +129,37 @@ static void apply_neumann(double *old, const Domain *d)
     }
 }
 
+static void pack_column(const double *old, const Domain *d, int x, double *buf)
+{
+    for (int y = 1; y <= d->ly; ++y)
+        buf[y - 1] = old[cell_index(d, x, y)];
+}
+
+static void unpack_column(double *old, const Domain *d, int x, const double *buf)
+{
+    for (int y = 1; y <= d->ly; ++y)
+        old[cell_index(d, x, y)] = buf[y - 1];
+}
+
+static void exchange_columns(double *old, const Domain *d,
+                             double *sendbuf, double *recvbuf)
+{
+    if (d->left >= 0) {
+        MPI_Recv(recvbuf, d->ly, MPI_DOUBLE, d->left, TAG_RIGHT,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        unpack_column(old, d, 0, recvbuf);
+        pack_column(old, d, 1, sendbuf);
+        MPI_Send(sendbuf, d->ly, MPI_DOUBLE, d->left, TAG_LEFT, MPI_COMM_WORLD);
+    }
+    if (d->right >= 0) {
+        pack_column(old, d, d->lx, sendbuf);
+        MPI_Send(sendbuf, d->ly, MPI_DOUBLE, d->right, TAG_RIGHT, MPI_COMM_WORLD);
+        MPI_Recv(recvbuf, d->ly, MPI_DOUBLE, d->right, TAG_LEFT,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        unpack_column(old, d, d->lx + 1, recvbuf);
+    }
+}
+
 static void exchange_rows(double *old, const Domain *d)
 {
     if (d->up >= 0) {
@@ -190,13 +221,17 @@ int main(int argc, char **argv)
     }
     Domain d;
     configure_domain(&p, rank, size, &d);
-    /* V4: incremental MPI heat diffusion implementation. */
-    if (p.px != 1) fail(rank, "V4 supports only 1xPY row partitions");
+    /* V5: incremental MPI heat diffusion implementation. */
+    if (p.px != 1 && p.py != 1) fail(rank, "V5 supports only 1D stripes");
     double *old = allocate_grid(&d);
     double *next = allocate_grid(&d);
     if (rank == 0) old[cell_index(&d, 1, 1)] = 100.0;
+    double *sendbuf = malloc((size_t)d.ly * sizeof(double));
+    double *recvbuf = malloc((size_t)d.ly * sizeof(double));
+    if (!sendbuf || !recvbuf) fail(rank, "Failed to allocate column buffers");
     for (int step = 0; step < p.steps; ++step) {
         apply_neumann(old, &d);
+        exchange_columns(old, &d, sendbuf, recvbuf);
         exchange_rows(old, &d);
         stencil_step(old, next, &d, p.alpha);
         double *tmp = old;
@@ -205,8 +240,10 @@ int main(int argc, char **argv)
     }
     double local_sum, local_max;
     local_statistics(old, &d, &local_sum, &local_max);
-    printf("[V4 LOCAL] rank=%d sum=%.12f max=%.12f\n",
+    printf("[V5 LOCAL] rank=%d sum=%.12f max=%.12f\n",
            rank, local_sum, local_max);
+    free(sendbuf);
+    free(recvbuf);
     free(old);
     free(next);
     MPI_Finalize();
