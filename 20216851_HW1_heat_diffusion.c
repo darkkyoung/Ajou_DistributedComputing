@@ -95,8 +95,6 @@ int main(int argc, char **argv)
     int localNX = NX / PX;
     int localNY = NY / PY;
 
-    /* AI-generated: process-grid and neighbor mapping. */
-
     #ifdef HW1_DEBUG_MAP
 
         int startX = px * localNX;
@@ -122,7 +120,6 @@ int main(int argc, char **argv)
             left, right, up, down);
     #endif
 
-    /* AI-generated: grid allocation and initialization. */
     size_t width  = (size_t)localNX + 2;
     size_t height = (size_t)localNY + 2;
 
@@ -171,12 +168,8 @@ int main(int argc, char **argv)
         T_old[1 * width + 1] = 100.0;
     }
 
-    /* AI-generated/modified: simulation timing. */
-
     double simulationStart = MPI_Wtime();
     for (int step = 0; step < steps; step++) {
-
-        /* AI-generated: Neumann boundary conditions. */
 
         if (left == -1) {
             for (int y = 1; y <= localNY; y++) {
@@ -290,7 +283,6 @@ int main(int argc, char **argv)
             );
         }
 
-        /* AI-generated: 5-point stencil. */
         for (int y = 1; y <= localNY; y++) {
             for (int x = 1; x <= localNX; x++) {
 
@@ -313,8 +305,6 @@ int main(int argc, char **argv)
     }
 
     double localElapsed = MPI_Wtime() - simulationStart;
-
-    /* AI-generated: local statistics. */
 
     double localSum = 0.0;
     double localMax = -INFINITY;
