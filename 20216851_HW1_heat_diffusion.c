@@ -1,11 +1,8 @@
 /*
  * HW1 - 2D Heat Diffusion
- * AI tool/model: ChatGPT (OpenAI), GPT-6
- * AI use dates: 2026-10-28 to 2026-10-29
- * AI-generated/modified: entire C implementation, including input parsing,
- * process-grid mapping, Neumann boundaries, halo exchange, stencil and
- * double buffering, global statistics, timing, and 4x4 reconstruction.
- * Core AI-assisted code regions are marked below.
+ * AI: ChatGPT (GPT-6), 2026-10-28 to 2026-10-29.
+ * AI-generated/modified: input validation, decomposition, halo exchange,
+ * boundary conditions, stencil, timing, statistics, and grid output.
  */
 
 #include <mpi.h>
@@ -25,7 +22,7 @@ enum {
     TAG_GRID = 101
 };
 
-/* AI-generated/modified: integer input validation. */
+/* AI-generated: input validation. */
 int parse_int(const char *text, int min_value, int *result)
 {
     char *end;
@@ -98,7 +95,7 @@ int main(int argc, char **argv)
     int localNX = NX / PX;
     int localNY = NY / PY;
 
-    /* AI-generated/modified: process-grid coordinates and neighbor mapping. */
+    /* AI-generated: process-grid and neighbor mapping. */
 
     #ifdef HW1_DEBUG_MAP
 
@@ -125,7 +122,7 @@ int main(int argc, char **argv)
             left, right, up, down);
     #endif
 
-    /* AI-generated/modified: local grid allocation and initial temperature. */
+    /* AI-generated: grid allocation and initialization. */
     size_t width  = (size_t)localNX + 2;
     size_t height = (size_t)localNY + 2;
 
@@ -174,12 +171,12 @@ int main(int argc, char **argv)
         T_old[1 * width + 1] = 100.0;
     }
 
-    /* AI-generated/modified: simulation loop and timing. */
+    /* AI-generated/modified: simulation timing. */
 
     double simulationStart = MPI_Wtime();
     for (int step = 0; step < steps; step++) {
 
-        /* AI-generated/modified: Neumann boundary values on global edges. */
+        /* AI-generated: Neumann boundary conditions. */
 
         if (left == -1) {
             for (int y = 1; y <= localNY; y++) {
@@ -209,7 +206,7 @@ int main(int argc, char **argv)
             }
         }
 
-        /* AI-generated/modified: horizontal halo (Left Recv->Send, Right Send->Recv). */
+        /* AI-generated: horizontal halo exchange. */
 
         if (left != -1) {
 
@@ -259,7 +256,7 @@ int main(int argc, char **argv)
             }
         }
 
-        /* AI-generated/modified: vertical halo (Up Recv->Send, Down Send->Recv). */
+        /* AI-generated: vertical halo exchange. */
 
         if (up != -1) {
             MPI_Recv(
@@ -293,7 +290,7 @@ int main(int argc, char **argv)
             );
         }
 
-        /* AI-generated/modified: 5-point stencil computation. */
+        /* AI-generated: 5-point stencil. */
         for (int y = 1; y <= localNY; y++) {
             for (int x = 1; x <= localNX; x++) {
 
@@ -317,7 +314,7 @@ int main(int argc, char **argv)
 
     double localElapsed = MPI_Wtime() - simulationStart;
 
-    /* AI-generated/modified: local interior sum and maximum. */
+    /* AI-generated: local statistics. */
 
     double localSum = 0.0;
     double localMax = -INFINITY;
@@ -336,7 +333,7 @@ int main(int argc, char **argv)
         }
     }
 
-    /* AI-generated/modified: global statistics gathering via Send/Recv. */
+    /* AI-generated: global statistics gathering. */
 
     double stats[3] = {
         localSum,
@@ -386,7 +383,7 @@ int main(int argc, char **argv)
         );
     }
 
-    /* AI-generated/modified: 4x4 global-grid reconstruction after timing. */
+    /* AI-generated: 4x4 grid reconstruction. */
 
     if (NX == 4 && NY == 4) {
 
