@@ -1,24 +1,11 @@
-
 /*
  * HW1 - 2D Heat Diffusion
- *
- * AI assistance: ChatGPT (OpenAI), GPT-6
- * Dates: 2026-10-28 to 2026-10-29
- *
- * AI-generated/modified code:
- * V0: MPI initialization and input validation
- * V1: Local grid allocation and initialization
- * V2: Stencil computation and double buffering
- * V3: Domain decomposition and neighbor mapping
- * V4: Vertical halo exchange
- * V5: Horizontal halo exchange
- * V6: Full 2D communication integration
- * V7: Global statistics, timing, and grid reconstruction
- * V8: Optional debug output for performance experiments
- *
- * Development and correctness tests were performed
- * incrementally. Performance measurements are reported
- * separately using actual MPI execution results.
+ * AI tool/model: ChatGPT (OpenAI), GPT-6
+ * AI use dates: 2026-10-28 to 2026-10-29
+ * AI-generated/modified: entire C implementation, including input parsing,
+ * process-grid mapping, Neumann boundaries, halo exchange, stencil and
+ * double buffering, global statistics, timing, and 4x4 reconstruction.
+ * Core AI-assisted code regions are marked below.
  */
 
 #include <mpi.h>
@@ -29,10 +16,6 @@
 #include <math.h>
 #include <stdint.h>
 
-/*
- * V7: Additional message tags for statistics and grid gathering.
- * AI-generated: ChatGPT GPT-6, 2026-10-29.
- */
 enum {
     TAG_LEFT = 10,
     TAG_RIGHT = 11,
@@ -42,8 +25,7 @@ enum {
     TAG_GRID = 101
 };
 
-
-/* Parse an integer with a specified minimum value. */
+/* AI-generated/modified: integer input validation. */
 int parse_int(const char *text, int min_value, int *result)
 {
     char *end;
@@ -110,22 +92,16 @@ int main(int argc, char **argv)
         return 1;
     }
 
-
     int px = rank % PX;
     int py = rank / PX;
 
     int localNX = NX / PX;
     int localNY = NY / PY;
 
-    
-    /*
-     * V3: Global coordinates and neighbor rank mapping.
-     * AI-generated: ChatGPT GPT-6, 2026-10-28.
-     */
+    /* AI-generated/modified: process-grid coordinates and neighbor mapping. */
 
-    /* Global coordinates of this rank's interior */
     #ifdef HW1_DEBUG_MAP
-        /* V8: Global coordinates used for debug output. */
+
         int startX = px * localNX;
         int startY = py * localNY;
 
@@ -133,33 +109,14 @@ int main(int argc, char **argv)
         int endY = startY + localNY - 1;
     #endif
 
-    /* Neighbor ranks (-1 means no neighbor) */
     int left  = (px > 0) ? rank - 1 : -1;
     int right = (px < PX - 1) ? rank + 1 : -1;
 
     int up    = (py > 0) ? rank - PX : -1;
     int down  = (py < PY - 1) ? rank + PX : -1;
 
-    
-    /*
-     * V1: Allocate local grids and initialize temperature.
-     * AI-generated: ChatGPT GPT-6, 2026-10-28.
-     */
-
-    
-    /*
-    * V6: Full 2D process-grid support.
-    *
-    * Horizontal and vertical halo exchanges are both enabled.
-    * Valid PX x PY decompositions are accepted.
-    *
-    * AI-assisted integration: ChatGPT GPT-6, 2026-10-29.
-    */
-
-    
-    /* V3: Print process ownership and neighbors. */
     #ifdef HW1_DEBUG_MAP
-        /* V8: Optional process-grid debug output. */
+
         printf("[V3-Map] Rank=%d Position=(%d,%d) "
             "GlobalX=%d..%d GlobalY=%d..%d "
             "Neighbors(L,R,U,D)=(%d,%d,%d,%d)\n",
@@ -168,11 +125,10 @@ int main(int argc, char **argv)
             left, right, up, down);
     #endif
 
-    /* Step 1: Calculate allocated grid dimensions. */
+    /* AI-generated/modified: local grid allocation and initial temperature. */
     size_t width  = (size_t)localNX + 2;
     size_t height = (size_t)localNY + 2;
 
-    /* Check for possible memory-size overflow. */
     if (height > SIZE_MAX / width ||
         width * height > SIZE_MAX / sizeof(double)) {
         MPI_Abort(MPI_COMM_WORLD, 1);
@@ -181,7 +137,6 @@ int main(int argc, char **argv)
 
     size_t totalCells = width * height;
 
-    /* Step 2: Allocate two temperature grids. */
     double *T_old = calloc(totalCells, sizeof(double));
     double *T_new = calloc(totalCells, sizeof(double));
 
@@ -192,12 +147,6 @@ int main(int argc, char **argv)
         MPI_Abort(MPI_COMM_WORLD, 1);
         return 1;
     }
-
-    
-    /*
-     * V5: Temporary column buffers.
-     * AI-generated: ChatGPT GPT-6, 2026-10-29.
-     */
 
     double *sendColumn = NULL;
     double *recvColumn = NULL;
@@ -221,29 +170,17 @@ int main(int argc, char **argv)
         }
     }
 
-
-    /* Step 3: Initialize the global top-left cell. */
     if (rank == 0) {
         T_old[1 * width + 1] = 100.0;
     }
-    
-    /*
-    * V2: Neumann boundary, 5-point stencil,
-    * and double buffering.
-    * AI-generated: ChatGPT GPT-6, 2026-10-28.
-    */
-    /* V7: Start measuring the simulation loop. */
-    /* AI-generated: ChatGPT GPT-6, 2026-10-29. */
+
+    /* AI-generated/modified: simulation loop and timing. */
+
     double simulationStart = MPI_Wtime();
     for (int step = 0; step < steps; step++) {
 
-        
-        /*
-         * V4: Apply Neumann condition only at global boundaries.
-         * AI-generated: ChatGPT GPT-6, 2026-10-28.
-         */
+        /* AI-generated/modified: Neumann boundary values on global edges. */
 
-        /* Left global boundary */
         if (left == -1) {
             for (int y = 1; y <= localNY; y++) {
                 size_t row = (size_t)y * width;
@@ -251,7 +188,6 @@ int main(int argc, char **argv)
             }
         }
 
-        /* Right global boundary */
         if (right == -1) {
             for (int y = 1; y <= localNY; y++) {
                 size_t row = (size_t)y * width;
@@ -260,14 +196,12 @@ int main(int argc, char **argv)
             }
         }
 
-        /* Top global boundary */
         if (up == -1) {
             for (int x = 1; x <= localNX; x++) {
                 T_old[x] = T_old[width + x];
             }
         }
 
-        /* Bottom global boundary */
         if (down == -1) {
             for (int x = 1; x <= localNX; x++) {
                 T_old[(size_t)(localNY + 1) * width + x] =
@@ -275,78 +209,57 @@ int main(int argc, char **argv)
             }
         }
 
-        /*
-         * V5: Horizontal Halo Exchange.
-         * Left: Recv -> Send
-         * Right: Send -> Recv
-         * AI-generated: ChatGPT GPT-6, 2026-10-29.
-         */
+        /* AI-generated/modified: horizontal halo (Left Recv->Send, Right Send->Recv). */
 
-        /* Exchange with the left neighbor */
         if (left != -1) {
 
-            /* 1. Receive right boundary of left neighbor */
             MPI_Recv(
                 recvColumn, localNY, MPI_DOUBLE,
                 left, TAG_RIGHT,
                 MPI_COMM_WORLD, MPI_STATUS_IGNORE
             );
 
-            /* 2. Unpack into left halo column (x=0) */
             for (int y = 1; y <= localNY; y++) {
                 T_old[(size_t)y * width] =
                     recvColumn[y - 1];
             }
 
-            /* 3. Pack our first interior column (x=1) */
             for (int y = 1; y <= localNY; y++) {
                 sendColumn[y - 1] =
                     T_old[(size_t)y * width + 1];
             }
 
-            /* 4. Send to left neighbor */
             MPI_Send(
                 sendColumn, localNY, MPI_DOUBLE,
                 left, TAG_LEFT, MPI_COMM_WORLD
             );
         }
 
-        /* Exchange with the right neighbor */
         if (right != -1) {
 
-            /* 1. Pack our last interior column */
             for (int y = 1; y <= localNY; y++) {
                 sendColumn[y - 1] =
                     T_old[(size_t)y * width + localNX];
             }
 
-            /* 2. Send to right neighbor */
             MPI_Send(
                 sendColumn, localNY, MPI_DOUBLE,
                 right, TAG_RIGHT, MPI_COMM_WORLD
             );
 
-            /* 3. Receive first column of right neighbor */
             MPI_Recv(
                 recvColumn, localNY, MPI_DOUBLE,
                 right, TAG_LEFT,
                 MPI_COMM_WORLD, MPI_STATUS_IGNORE
             );
 
-            /* 4. Unpack into right halo column */
             for (int y = 1; y <= localNY; y++) {
                 T_old[(size_t)y * width + localNX + 1] =
                     recvColumn[y - 1];
             }
         }
 
-
-        /*
-         * V4: Vertical Halo Exchange.
-         * Up: Recv -> Send
-         * Down: Send -> Recv
-         * AI-generated: ChatGPT GPT-6, 2026-10-28.
-         */
+        /* AI-generated/modified: vertical halo (Up Recv->Send, Down Send->Recv). */
 
         if (up != -1) {
             MPI_Recv(
@@ -380,8 +293,7 @@ int main(int argc, char **argv)
             );
         }
 
-
-        /* 3. Compute new temperatures */
+        /* AI-generated/modified: 5-point stencil computation. */
         for (int y = 1; y <= localNY; y++) {
             for (int x = 1; x <= localNX; x++) {
 
@@ -398,22 +310,14 @@ int main(int argc, char **argv)
             }
         }
 
-        /* 4. Swap old and new buffers */
         double *temp = T_old;
         T_old = T_new;
         T_new = temp;
     }
 
-    /* V7: End timing before gathering statistics. */
     double localElapsed = MPI_Wtime() - simulationStart;
 
-
-    /* V6: Calculate final local statistics (interior only). */
-    
-    /*
-    * V2: Calculate local sum and maximum.
-    * AI-generated: ChatGPT GPT-6, 2026-10-28.
-    */
+    /* AI-generated/modified: local interior sum and maximum. */
 
     double localSum = 0.0;
     double localMax = -INFINITY;
@@ -432,10 +336,7 @@ int main(int argc, char **argv)
         }
     }
 
-    /*
-     * V7: Collect global statistics using MPI_Send/MPI_Recv.
-     * AI-generated: ChatGPT GPT-6, 2026-10-29.
-     */
+    /* AI-generated/modified: global statistics gathering via Send/Recv. */
 
     double stats[3] = {
         localSum,
@@ -449,7 +350,6 @@ int main(int argc, char **argv)
         double globalMax = localMax;
         double maxElapsed = localElapsed;
 
-        /* Receive results from all other ranks. */
         for (int src = 1; src < size; src++) {
 
             double received[3];
@@ -480,29 +380,19 @@ int main(int argc, char **argv)
 
     } else {
 
-        /* Every non-root rank sends three doubles to rank 0. */
         MPI_Send(
             stats, 3, MPI_DOUBLE,
             0, TAG_STATS, MPI_COMM_WORLD
         );
     }
 
-
-
-    
-    /*
-     * V7: Reconstruct final global 4x4 temperature grid.
-     * AI-generated: ChatGPT GPT-6, 2026-10-29.
-     *
-     * Diagnostic only: excluded from measured simulation time.
-     */
+    /* AI-generated/modified: 4x4 global-grid reconstruction after timing. */
 
     if (NX == 4 && NY == 4) {
 
         int localCount = localNX * localNY;
         double localBlock[16] = {0};
 
-        /* Step 1: Pack local interior into a contiguous array. */
         int k = 0;
 
         for (int y = 1; y <= localNY; y++) {
@@ -516,7 +406,6 @@ int main(int argc, char **argv)
 
             double globalGrid[16] = {0};
 
-            /* Step 2: Collect each rank's local block. */
             for (int src = 0; src < size; src++) {
 
                 double received[16];
@@ -532,11 +421,9 @@ int main(int argc, char **argv)
                     block = received;
                 }
 
-                /* Step 3: Find the block's global origin. */
                 int originX = (src % PX) * localNX;
                 int originY = (src / PX) * localNY;
 
-                /* Step 4: Copy block values to global coordinates. */
                 for (int y = 0; y < localNY; y++) {
                     for (int x = 0; x < localNX; x++) {
 
@@ -551,7 +438,6 @@ int main(int argc, char **argv)
                 }
             }
 
-            /* Step 5: Print the final global grid. */
             for (int y = 0; y < NY; y++) {
 
                 printf("[Grid] y=%d:", y);
@@ -566,7 +452,6 @@ int main(int argc, char **argv)
 
         } else {
 
-            /* Non-root ranks send their interior values. */
             MPI_Send(
                 localBlock, localCount, MPI_DOUBLE,
                 0, TAG_GRID, MPI_COMM_WORLD
@@ -574,8 +459,6 @@ int main(int argc, char **argv)
         }
     }
 
-
-    /* Release all allocated buffers. */
     free(sendColumn);
     free(recvColumn);
     free(T_old);
