@@ -1,0 +1,7 @@
+[Result] Graph=star N=4 M=6 Procs=1 Nodes=1 Iters=171 Residual=8.52651282912e-13 Damp=0.85 Converged=1 Mode=normal Dangling=0 Total=0.000036 Compute=0.000006 Comm=0.000015 Allgatherv=0.000007 Allreduce=0.000008 Load=0.000001
+[Stats] Sum=1 SumError=0 Min=0.173423423423358 Max=0.479729729729926
+[Balance] InEdgesMin=6 InEdgesMax=6 ComputeMin=0.000006 ComputeMax=0.000006
+[Top] Rank=1 Node=0 Score=0.479729729729926
+[Top] Rank=2 Node=1 Score=0.173423423423358
+[Top] Rank=3 Node=2 Score=0.173423423423358
+[Top] Rank=4 Node=3 Score=0.173423423423358

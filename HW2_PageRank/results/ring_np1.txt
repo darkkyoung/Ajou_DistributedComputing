@@ -1,0 +1,11 @@
+[Result] Graph=ring N=8 M=8 Procs=1 Nodes=1 Iters=1 Residual=0 Damp=0.85 Converged=1 Mode=normal Dangling=0 Total=0.000003 Compute=0.000000 Comm=0.000003 Allgatherv=0.000001 Allreduce=0.000002 Load=0.000000
+[Stats] Sum=1 SumError=0 Min=0.125 Max=0.125
+[Balance] InEdgesMin=8 InEdgesMax=8 ComputeMin=0.000000 ComputeMax=0.000000
+[Top] Rank=1 Node=0 Score=0.125
+[Top] Rank=2 Node=1 Score=0.125
+[Top] Rank=3 Node=2 Score=0.125
+[Top] Rank=4 Node=3 Score=0.125
+[Top] Rank=5 Node=4 Score=0.125
+[Top] Rank=6 Node=5 Score=0.125
+[Top] Rank=7 Node=6 Score=0.125
+[Top] Rank=8 Node=7 Score=0.125
