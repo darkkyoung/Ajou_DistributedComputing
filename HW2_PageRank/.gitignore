@@ -1,1 +1,5 @@
 pagerank
+/pagerank
+/results/*.prcsr1
+/results/*.f64
+*.bin
