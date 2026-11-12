@@ -1,0 +1,8 @@
+[Result] Graph=file N=5 M=5 Procs=4 Nodes=1 Iters=20 Residual=3.68281017491e-05 Damp=0.85 Converged=0 Mode=benchmark Dangling=0.0361445783133 Total=0.000071 Compute=0.000000 Comm=0.000069 Allgatherv=0.000041 Allreduce=0.000037 Load=0.000104
+[Stats] Sum=1 SumError=2.22044604925e-16 Min=0.0361445783132531 Max=0.379907509301704
+[Balance] InEdgesMin=0 InEdgesMax=3 ComputeMin=0.000000 ComputeMax=0.000000
+[Top] Rank=1 Node=2 Score=0.379907509301704
+[Top] Rank=2 Node=0 Score=0.359063352562494
+[Top] Rank=3 Node=1 Score=0.188739981509295
+[Top] Rank=4 Node=3 Score=0.0361445783132531
+[Top] Rank=5 Node=4 Score=0.0361445783132531
